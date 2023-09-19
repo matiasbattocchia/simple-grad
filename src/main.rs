@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::iter::zip;
 
 type Value = i32;
 
@@ -30,9 +31,9 @@ impl Variable {
 
 #[derive(Clone)]
 struct TapeEntry {
-    inputs: (String, String),
+    inputs: Vec<String>,
     output: String,
-    backprop: Rc<dyn Fn(&Ops, &Var) -> (Var,Var)>,
+    backprop: Rc<dyn Fn(&Ops, &[&Var]) -> Vec<Var>>,
 }
 
 struct Ops {
@@ -64,19 +65,19 @@ impl Ops {
         let a = Rc::clone(a);
         let b = Rc::clone(b);
 
-        let inputs = (a.name.clone(), b.name.clone());
+        let inputs = vec![a.name.clone(), b.name.clone()];
 
         let r = self.var(a.value * b.value);
         println!("{} = {} * {}", r.name, a.name, b.name);
 
-        let backprop = move | op: &Ops, dl_dr: &Var | {
+        let backprop = move | op: &Ops, dl_dr: &[&Var] | {
             let dr_da = &b;
             let dr_db = &a;
 
-            let dl_da = op.mul(dl_dr, dr_da);
-            let dl_db = op.mul(dl_dr, dr_db);
+            let dl_da = op.mul(dl_dr[0], dr_da);
+            let dl_db = op.mul(dl_dr[0], dr_db);
 
-            (dl_da, dl_db)
+            vec![dl_da, dl_db]
         };
 
         self.tape.borrow_mut().push(TapeEntry{
@@ -92,19 +93,19 @@ impl Ops {
         let a = Rc::clone(a);
         let b = Rc::clone(b);
 
-        let inputs = (a.name.clone(), b.name.clone());
+        let inputs = vec![a.name.clone(), b.name.clone()];
 
         let r = self.var(a.value + b.value);
         println!("{} = {} + {}", r.name, a.name, b.name);
 
-        let backprop = move | _op: &Ops, dl_dr: &Var | {
+        let backprop = move | _op: &Ops, dl_dr: &[&Var] | {
             // dr_da = 1;
             // dr_db = 1;
 
-            let dl_da = Rc::clone(dl_dr); // * dr_da
-            let dl_db = Rc::clone(dl_dr); // * dr_db
+            let dl_da = Rc::clone(dl_dr[0]); // * dr_da
+            let dl_db = Rc::clone(dl_dr[0]); // * dr_db
 
-            (dl_da, dl_db)
+            vec![dl_da, dl_db]
         };
 
         self.tape.borrow_mut().push(TapeEntry{
@@ -125,24 +126,22 @@ impl Ops {
         let tape = self.tape.borrow().clone();
 
         for entry in tape.iter().rev() {
-            println!("{:?} -> {:?}", entry.inputs, entry.output);
+            //println!("{:?} -> {:?}", entry.inputs, entry.output);
 
             let dl_doutput = &dl_d.get(&entry.output);
 
             if dl_doutput.is_none() { continue }
 
-            let dl_dinputs = (entry.backprop)(self, dl_doutput.unwrap());
+            // dl_doutput is a single element slice by the time being; tape entry should support
+            // many outputs
+            let dl_dinputs = (entry.backprop)(self, &[dl_doutput.unwrap()]);
 
-            if let Some(grad) = dl_d.get(&entry.inputs.0) {
-                dl_d.insert(entry.inputs.0.clone(), self.add(&grad, &dl_dinputs.0));
-            } else {
-                dl_d.insert(entry.inputs.0.clone(), dl_dinputs.0);
-            }
-
-            if let Some(grad) = dl_d.get(&entry.inputs.1) {
-                dl_d.insert(entry.inputs.1.clone(), self.add(&grad, &dl_dinputs.1));
-            } else {
-                dl_d.insert(entry.inputs.1.clone(), dl_dinputs.1);
+            for (input, dl_dinput) in zip(&entry.inputs, dl_dinputs) {
+                if let Some(grad) = dl_d.get(input) {
+                    dl_d.insert(input.clone(), self.add(&grad, &dl_dinput));
+                } else {
+                    dl_d.insert(input.clone(), dl_dinput);
+                }
             }
         }
 
