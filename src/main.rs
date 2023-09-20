@@ -3,7 +3,12 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter::zip;
 
-type Value = i32;
+#[cfg(feature = "mkl")]
+extern crate intel_mkl_src;
+
+use candle_core::{Device, Tensor};
+
+type Value = Tensor;
 
 type Var = Rc<Variable>;
 
@@ -67,7 +72,7 @@ impl Ops {
 
         let inputs = vec![a.name.clone(), b.name.clone()];
 
-        let r = self.var(a.value * b.value);
+        let r = self.var( a.value.mul(&b.value).unwrap() );
         println!("{} = {} * {}", r.name, a.name, b.name);
 
         let backprop = move | op: &Ops, dl_dr: &[&Var] | {
@@ -95,7 +100,7 @@ impl Ops {
 
         let inputs = vec![a.name.clone(), b.name.clone()];
 
-        let r = self.var(a.value + b.value);
+        let r = self.var( a.value.add(&b.value).unwrap() );
         println!("{} = {} + {}", r.name, a.name, b.name);
 
         let backprop = move | _op: &Ops, dl_dr: &[&Var] | {
@@ -117,10 +122,57 @@ impl Ops {
         r
     }
 
+    fn sum(&self, a: &Var, name: Option<&str>) -> Var {
+        let a = Rc::clone(a);
+
+        let inputs = vec![a.name.clone()];
+
+        let r = match name {
+            Some(name) => self.named_var( a.value.sum_all().unwrap(), name ),
+            None => self.var( a.value.sum_all().unwrap() )
+        };
+
+        println!("{} = {}.sum()", r.name, a.name);
+
+        let backprop = move | op: &Ops, dl_dr: &[&Var] | {
+            let size = a.value.dims();
+            vec![ op.expand(dl_dr[0], size) ]
+        };
+
+        self.tape.borrow_mut().push(TapeEntry{
+            inputs,
+            output: r.name.clone(),
+            backprop: Rc::new(backprop),
+        });
+
+        r
+    }
+
+    fn expand(&self, a: &Var, size: &[usize]) -> Var {
+        let a = Rc::clone(a);
+
+        let inputs = vec![a.name.clone()];
+
+        let r = self.var( a.value.expand(size).unwrap() );
+        println!("{} = {}.expand({:?})", r.name, a.name, size);
+
+        let backprop = move | op: &Ops, dl_dr: &[&Var] | {
+            vec![ op.sum(dl_dr[0], None) ]
+        };
+
+        self.tape.borrow_mut().push(TapeEntry{
+            inputs,
+            output: r.name.clone(),
+            backprop: Rc::new(backprop),
+        });
+
+        r
+    }
+
     fn grad(&self, l: &Var, ret: &[&Var]) {
         println!("d{} --------------", l.name);
         let mut dl_d = HashMap::new();
-        dl_d.insert(l.name.clone(), self.var(1));
+        dl_d.insert(l.name.clone(), self.var(l.value.ones_like().unwrap() ));
 
         // cannot borrow for iteration and then borrow mutable during backprop
         let tape = self.tape.borrow().clone();
@@ -156,29 +208,31 @@ impl Ops {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let op = Ops::new();
 
-    let a = op.named_var(2, "a");
-    let b = op.named_var(3, "b");
+    let a = op.named_var(Tensor::new(&[0.4605, 0.4061, 0.9422, 0.3946], &Device::Cpu)?, "a");
+    let b = op.named_var(Tensor::new(&[0.0850, 0.3296, 0.9888, 0.6494], &Device::Cpu)?, "b");
 
-    let t = op.add(&a, &b);
-    let l = op.mul(&t, &b);
+    let simple = | a, b | { op.mul( &op.add(a, b), b ) };
 
-    op.grad(&l, &[&a, &b]);
+    let l0 = op.sum( &simple(&a, &b) , Some("L0") );
+    op.grad(&l0, &[&a, &b]);
 
-    let da = a.grad().unwrap();
-    let db = b.grad().unwrap();
+    let dl0_da = a.grad().unwrap();
+    let dl0_db = b.grad().unwrap();
 
-    println!("d{} = {}", a.name, da);
-    println!("d{} = {}", b.name, db);
+    //println!("d{} = {}", a.name, da);
+    //println!("d{} = {}", b.name, db);
 
-    let l = op.mul(&da, &db);
-    op.grad(&l, &[&a, &b]);
+    let l1 = op.sum( &op.add( &op.mul(&dl0_da, &dl0_da), &op.mul(&dl0_db, &dl0_db) ), Some("L1") );
+    op.grad(&l1, &[&a, &b]);
 
-    let da = a.grad().unwrap();
-    let db = b.grad().unwrap();
+    let dl1_da = a.grad().unwrap();
+    let dl1_db = b.grad().unwrap();
 
-    println!("d{} = {}", a.name, da);
-    println!("d{} = {}", b.name, db);
+    println!("d{} = {}", a.name, dl1_da);
+    println!("d{} = {}", b.name, dl1_db);
+
+    Ok(())
 }
