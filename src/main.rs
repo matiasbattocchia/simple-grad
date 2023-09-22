@@ -2,10 +2,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter::zip;
-
-#[cfg(feature = "mkl")]
-extern crate intel_mkl_src;
-
 use candle_core::{Device, Tensor};
 
 type Value = Tensor;
@@ -208,11 +204,11 @@ impl Ops {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     let op = Ops::new();
 
-    let a = op.named_var(Tensor::new(&[0.4605, 0.4061, 0.9422, 0.3946], &Device::Cpu)?, "a");
-    let b = op.named_var(Tensor::new(&[0.0850, 0.3296, 0.9888, 0.6494], &Device::Cpu)?, "b");
+    let a = op.named_var(Tensor::new(&[0.4605, 0.4061, 0.9422, 0.3946], &Device::Cpu).unwrap(), "a");
+    let b = op.named_var(Tensor::new(&[0.0850, 0.3296, 0.9888, 0.6494], &Device::Cpu).unwrap(), "b");
 
     let simple = | a, b | { op.mul( &op.add(a, b), b ) };
 
@@ -222,9 +218,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dl0_da = a.grad().unwrap();
     let dl0_db = b.grad().unwrap();
 
-    //println!("d{} = {}", a.name, da);
-    //println!("d{} = {}", b.name, db);
-
     let l1 = op.sum( &op.add( &op.mul(&dl0_da, &dl0_da), &op.mul(&dl0_db, &dl0_db) ), Some("L1") );
     op.grad(&l1, &[&a, &b]);
 
@@ -233,6 +226,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("d{} = {}", a.name, dl1_da);
     println!("d{} = {}", b.name, dl1_db);
-
-    Ok(())
 }
