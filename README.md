@@ -102,7 +102,7 @@ da = [1.2610, 2.1306, 5.8396, 3.3868]
 db = [ 2.6920,  4.9204, 13.6568,  8.0724]
 ```
 
-## Design decisions
+## Design choices
 
 I wanted to support syntax like the following (i.e. not enforcing binding of returned variables).
 
@@ -126,7 +126,7 @@ struct Variable {
 
 So I put variables inside a `Rc<T>`.
 
-Some people store a reference to the tape into de variables, others, choose to do it into operations, not to mentions the ones who prefer a global variable.
+Some people store a reference to the tape right into variables, others, choose to do it into operations, not to mention the ones who prefer a global variable.
 I did it in operations because it was the thing that worked the best for my current Rust knowledge.
 
 ```rust
@@ -136,4 +136,14 @@ struct Ops {
 }
 ```
 
-I had to use `RefCell<T>` for the tape because there might be many references to Ops and they have to be mutable.
+I had to use `RefCell<T>` for the tape because there might be many references to Ops and they had to be mutable.
+
+## Other implementations
+
+* (rustygrad)[https://github.com/Mathemmagician/rustygrad]
+* (rustograd)[https://github.com/msakuta/rustograd]
+
+## Further readings
+
+* (CS224n gradient notes)[https://web.stanford.edu/class/archive/cs/cs224n/cs224n.1184/readings/gradient-notes.pdf]
+* (CS231n vector derivatives)[http://cs231n.stanford.edu/vecDerivs.pdf]
