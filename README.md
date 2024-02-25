@@ -140,10 +140,10 @@ I had to use `RefCell<T>` for the tape because there might be many references to
 
 ## Other implementations
 
-* (rustygrad)[https://github.com/Mathemmagician/rustygrad]
-* (rustograd)[https://github.com/msakuta/rustograd]
+* [rustygrad](https://github.com/Mathemmagician/rustygrad)
+* [rustograd](https://github.com/msakuta/rustograd)
 
 ## Further readings
 
-* (CS224n gradient notes)[https://web.stanford.edu/class/archive/cs/cs224n/cs224n.1184/readings/gradient-notes.pdf]
-* (CS231n vector derivatives)[http://cs231n.stanford.edu/vecDerivs.pdf]
+* [CS224n gradient notes](https://web.stanford.edu/class/archive/cs/cs224n/cs224n.1184/readings/gradient-notes.pdf)
+* [CS231n vector derivatives](http://cs231n.stanford.edu/vecDerivs.pdf)
